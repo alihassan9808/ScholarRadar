@@ -1,0 +1,9 @@
+.git
+.git/**
+.github
+.github/**
+.wrangler
+.wrangler/**
+wrangler.toml
+update.py
+.assetsignore
