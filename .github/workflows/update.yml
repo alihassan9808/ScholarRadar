@@ -1,0 +1,19 @@
+name: Refresh research opportunities
+on:
+  schedule:
+    - cron: '15 1 * * *'
+  workflow_dispatch:
+permissions:
+  contents: write
+jobs:
+  refresh:
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+      - run: python3 update.py
+      - run: |
+          git config user.name "ScholarRadar bot"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add opportunities.json
+          git diff --cached --quiet || git commit -m "Refresh research opportunities"
+          git push
