@@ -1,3 +1,4 @@
-name = "scholarradar"
+name = "scholarradar1"
 compatibility_date = "2026-11-17"
 workers_dev = true
+preview_urls = false
