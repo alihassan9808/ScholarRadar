@@ -10,7 +10,7 @@ sources=[
 ("https://jobs.uel.ac.uk/RSS/rss.aspx","United Kingdom / see listing"),
 ]
 universities={"hr-jobs.lancs.ac.uk":"Lancaster University","jobs.surrey.ac.uk":"University of Surrey","jobs.soton.ac.uk":"University of Southampton","jobs.leeds.ac.uk":"University of Leeds","jobs.kent.ac.uk":"University of Kent","jobs.uel.ac.uk":"University of East London"}
-from urllib.parse import urlparse
+from urllib.parse import urlparse, parse_qs, urlencode
 def clean(value):
     return html.unescape(re.sub(r"<[^>]+>"," ",value or "")).strip()[:18000]
 ranks=json.loads("{\"Lancaster University\":[\"164\",\"lancaster-university\"],\"University of Surrey\":[\"=246\",\"university-surrey\"],\"University of Southampton\":[\"=111\",\"university-southampton\"],\"University of Leeds\":[\"=77\",\"university-leeds\"],\"University of Kent\":[\"415\",\"university-kent\"],\"University of East London\":[\"1001-1200\",\"university-east-london\"]}")
@@ -30,11 +30,17 @@ def enrich(item):
     rank=ranks.get(item.get("university"))
     if rank: item.update(qs_rank=rank[0],qs_year=2027,qs_source="https://www.topuniversities.com/universities/"+rank[1])
     try:
-        req=urllib.request.Request(item["url"],headers={"User-Agent":"ScholarRadar/1.0 (academic listings reader)"})
+        ref=parse_qs(urlparse(item["url"]).query).get("ref",[""])[0]
+        direct="https://"+urlparse(item["url"]).hostname+"/Vacancy.aspx?"+urlencode({"ref":ref}) if ref else item["url"]
+        req=urllib.request.Request(direct,headers={"User-Agent":"ScholarRadar/1.0 (academic listings reader)"})
         with urllib.request.urlopen(req,timeout=12) as response:
             if urlparse(response.geturl()).hostname!=urlparse(item["url"]).hostname: return item
             parser=PageText();parser.feed(response.read(2000000).decode("utf-8",errors="replace"))
         lines=[" ".join(t.split()) for t in "".join(parser.parts).splitlines() if t.strip()]
+        if ref and not any(ref.lower() in line.lower() for line in lines) and not any(item["title"].split("(")[0].strip().lower() in line.lower() for line in lines):
+            print("Could not confirm vacancy identity:",direct)
+            return item
+        item["country"]="United Kingdom"
         patterns={"deadline":r"closing date|application deadline|apply by","benefits":r"salary|stipend|tuition fee|funding|per annum","eligibility":r"eligible|eligibility|applicants must|candidates must","requirements":r"phd in|degree in|doctorate in|essential criteria|english language|you will have|you should have","documents":r"cover letter|curriculum vitae|\bCV\b|transcripts|references"}
         for field,pattern in patterns.items():
             matches=[]
@@ -44,7 +50,8 @@ def enrich(item):
                     if len(line)<45 and i+1<len(lines): value+=" "+lines[i+1]
                     if value not in matches: matches.append(value)
             if matches: item[field]=" • ".join(matches[:3])
-        if any(item.get(k) for k in patterns): item["details_source"]=item["url"]
+        if any(item.get(k) for k in patterns): item["details_source"]=direct
+        print("Extracted",sum(bool(item.get(k)) for k in patterns),"fields:",ref)
     except Exception as exc: print("Details unavailable:",item["url"],str(exc))
     return item
 items={}
@@ -72,5 +79,6 @@ if not successful or not items:
 from concurrent.futures import ThreadPoolExecutor
 with ThreadPoolExecutor(max_workers=4) as pool:
     items=dict(zip(items.keys(),pool.map(enrich,items.values())))
+print("Listings with extracted details:",sum(bool(x.get("details_source")) for x in items.values()),"/",len(items))
 Path("opportunities.json").write_text(json.dumps({"updated":datetime.date.today().isoformat(),"items":list(items.values())},indent=2))
 print(f"Collected {len(items)} opportunities")
