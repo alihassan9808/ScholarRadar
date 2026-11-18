@@ -1,4 +1,4 @@
-name: ScholarRadar LinkedIn introduction
+name: ScholarRadar verified Hong Kong fellowship
 on:
   push:
     paths:
@@ -19,8 +19,8 @@ jobs:
           import os,json,urllib.request
           if os.environ.get("GITHUB_RUN_ATTEMPT") != "1":
               raise SystemExit("No retries to avoid duplicate posts")
-          with urllib.request.urlopen("https://scholarradar-bsv.pages.dev/",timeout=25) as res:
-              if res.status != 200 or "ScholarRadar" not in res.read().decode(errors="replace"):
+          with urllib.request.urlopen("https://scholarradar-bsv.pages.dev/hkpfs-2027.html",timeout=25) as res:
+              if res.status != 200 or "344,400" not in res.read().decode(errors="replace"):
                   raise SystemExit("Website verification failed")
           def query(q):
               req=urllib.request.Request("https://api.buffer.com",data=json.dumps({"query":q}).encode(),headers={"Authorization":"Bearer "+os.environ["BUFFER_API_KEY"],"Content-Type":"application/json"})
@@ -35,7 +35,7 @@ jobs:
               channels.extend(c for c in query("query { channels(input: { organizationId: "+json.dumps(org["id"])+" }) { id service } }")["channels"] if str(c["service"]).lower()=="linkedin")
           if len(channels)!=1:
               raise SystemExit("Expected exactly one LinkedIn channel")
-          message="🎓 Looking for international scholarships and research opportunities?\n\nExplore ScholarRadar — a free platform for discovering scholarships, internships, funded PhD opportunities and research vacancies.\n\nBrowse opportunities and find links to official application websites.\n\n🌐 https://scholarradar-bsv.pages.dev/\n\n#Scholarships #PhD #Internships #StudyAbroad #ResearchOpportunities #ScholarRadar"
+          message="🇭🇰 Hong Kong PhD Fellowship 2027/28 — applications open!\n\n🎓 400 fellowships available\n💰 HK$344,400 annual stipend and HK$14,400 annual research travel allowance for three years, per official call.\n🌍 Applicants of all nationalities seeking new full-time PhD admission.\n📅 Initial application deadline: 1 December 2026, noon Hong Kong time.\n\nRead eligibility, application steps and access the official application portal on ScholarRadar:\nhttps://scholarradar-bsv.pages.dev/hkpfs-2027.html\n\n#PhD #Scholarships2027 #HongKong #Research #ScholarRadar"
           q="mutation { createPost(input: { text: "+json.dumps(message,ensure_ascii=False)+", channelId: "+json.dumps(channels[0]["id"])+", schedulingType: automatic, mode: addToQueue }) { ... on PostActionSuccess { post { id dueAt } } ... on MutationError { message } } }"
           result=query(q)["createPost"]
           if not result.get("post"):
