@@ -1,0 +1,39 @@
+name: Buffer connection test
+on:
+  workflow_dispatch:
+  push:
+    paths:
+      - '.github/workflows/buffer-test.yml'
+permissions:
+  contents: read
+jobs:
+  test:
+    runs-on: ubuntu-latest
+    timeout-minutes: 3
+    steps:
+      - name: Verify Buffer and LinkedIn connection
+        env:
+          BUFFER_API_KEY: ${{ secrets.BUFFER_API_KEY }}
+        run: |
+          python - <<'PY'
+          import os, json, urllib.request
+          key = os.environ.get("BUFFER_API_KEY")
+          if not key:
+              raise SystemExit("BUFFER_API_KEY is missing")
+          def query(q):
+              req = urllib.request.Request("https://api.buffer.com", data=json.dumps({"query":q}).encode(), headers={"Authorization":"Bearer "+key,"Content-Type":"application/json"})
+              with urllib.request.urlopen(req, timeout=30) as res:
+                  result=json.load(res)
+              if result.get("errors"):
+                  raise SystemExit("Buffer query failed; check permissions")
+              return result["data"]
+          orgs=query("query { account { organizations { id } } }")["account"]["organizations"]
+          count=0
+          for org in orgs:
+              channels=query("query { channels(input: { organizationId: "+json.dumps(org["id"])+" }) { id service } }")["channels"]
+              count+=sum(str(c["service"]).lower()=="linkedin" for c in channels)
+          print("LinkedIn channels connected:", count)
+          if count != 1:
+              raise SystemExit("Expected exactly one LinkedIn channel; review connection")
+          print("Read-only connection test passed. No posts created.")
+          PY
