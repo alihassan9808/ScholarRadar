@@ -2,6 +2,7 @@ import json, datetime, urllib.request, html, re
 from pathlib import Path
 import feedparser
 sources=[
+("https://hr-jobs.lancs.ac.uk/RSS/rss.aspx","United Kingdom / see listing"),
 ("https://jobs.surrey.ac.uk/RSS/rss.aspx","United Kingdom / see listing"),
 ("https://jobs.soton.ac.uk/RSS/rss.aspx","United Kingdom / see listing"),
 ("https://jobs.leeds.ac.uk/RSS/rss.aspx","United Kingdom / see listing"),
@@ -21,8 +22,10 @@ for url,country in sources:
         for e in data.entries:
             title=html.unescape(re.sub(r"<[^>]+>","",e.get("title",""))).strip()
             link=e.get("link","")
+            if re.search(r"\b(manager|administrator|coordinator|officer|librarian)\b", title, re.I):
+                continue
             if link.startswith("https://") and any(w in title.lower() for w in ("phd","ph.d","doctoral","studentship","research assistant","postdoc","scholarship","research fellow","research associate","researcher")):
-                items[link]={"title":title,"url":link,"country":country,"kind":"Research vacancy"}
+                items[link]={"title":title,"url":link,"country":country,"kind":"Research vacancy","category":("PhD / studentship" if re.search(r"\b(phd|ph\.d|studentship|doctoral candidate)\b",title,re.I) else "Postdoctoral" if re.search(r"postdoc|research fellow",title,re.I) else "Research position"),"funding":"Check source"}
         print(f"{url}: {len(data.entries)} entries")
     except Exception as exc:
         print(f"Feed unavailable: {url}: {exc}")
