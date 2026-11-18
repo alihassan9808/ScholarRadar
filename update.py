@@ -13,6 +13,40 @@ universities={"hr-jobs.lancs.ac.uk":"Lancaster University","jobs.surrey.ac.uk":"
 from urllib.parse import urlparse
 def clean(value):
     return html.unescape(re.sub(r"<[^>]+>"," ",value or "")).strip()[:18000]
+ranks=json.loads("{\"Lancaster University\":[\"164\",\"lancaster-university\"],\"University of Surrey\":[\"=246\",\"university-surrey\"],\"University of Southampton\":[\"=111\",\"university-southampton\"],\"University of Leeds\":[\"=77\",\"university-leeds\"],\"University of Kent\":[\"415\",\"university-kent\"],\"University of East London\":[\"1001-1200\",\"university-east-london\"]}")
+from html.parser import HTMLParser
+class PageText(HTMLParser):
+    def __init__(self):
+        super().__init__(); self.parts=[]; self.skip=0
+    def handle_starttag(self,tag,attrs):
+        if tag in ("script","style","nav","footer","header"): self.skip+=1
+        if tag in ("p","div","li","h1","h2","h3","br","tr","td","dt","dd"): self.parts.append("\n")
+    def handle_endtag(self,tag):
+        if tag in ("script","style","nav","footer","header"): self.skip=max(0,self.skip-1)
+        if tag in ("p","div","li","h1","h2","h3","tr","td","dt","dd"): self.parts.append("\n")
+    def handle_data(self,data):
+        if not self.skip: self.parts.append(data)
+def enrich(item):
+    rank=ranks.get(item.get("university"))
+    if rank: item.update(qs_rank=rank[0],qs_year=2027,qs_source="https://www.topuniversities.com/universities/"+rank[1])
+    try:
+        req=urllib.request.Request(item["url"],headers={"User-Agent":"ScholarRadar/1.0 (academic listings reader)"})
+        with urllib.request.urlopen(req,timeout=12) as response:
+            if urlparse(response.geturl()).hostname!=urlparse(item["url"]).hostname: return item
+            parser=PageText();parser.feed(response.read(2000000).decode("utf-8",errors="replace"))
+        lines=[" ".join(t.split()) for t in "".join(parser.parts).splitlines() if t.strip()]
+        patterns={"deadline":r"closing date|application deadline|apply by","benefits":r"salary|stipend|tuition fee|funding|per annum","eligibility":r"eligible|eligibility|applicants must|candidates must","requirements":r"phd in|degree in|doctorate in|essential criteria|english language|you will have|you should have","documents":r"cover letter|curriculum vitae|\bCV\b|transcripts|references"}
+        for field,pattern in patterns.items():
+            matches=[]
+            for i,line in enumerate(lines):
+                if re.search(pattern,line,re.I) and len(line)<1500:
+                    value=line
+                    if len(line)<45 and i+1<len(lines): value+=" "+lines[i+1]
+                    if value not in matches: matches.append(value)
+            if matches: item[field]=" • ".join(matches[:3])
+        if any(item.get(k) for k in patterns): item["details_source"]=item["url"]
+    except Exception as exc: print("Details unavailable:",item["url"],str(exc))
+    return item
 items={}
 successful=0
 for url,country in sources:
@@ -35,5 +69,8 @@ for url,country in sources:
         print(f"Feed unavailable: {url}: {exc}")
 if not successful or not items:
     raise RuntimeError("No qualifying entries from available feeds; previous data preserved")
+from concurrent.futures import ThreadPoolExecutor
+with ThreadPoolExecutor(max_workers=4) as pool:
+    items=dict(zip(items.keys(),pool.map(enrich,items.values())))
 Path("opportunities.json").write_text(json.dumps({"updated":datetime.date.today().isoformat(),"items":list(items.values())},indent=2))
 print(f"Collected {len(items)} opportunities")
