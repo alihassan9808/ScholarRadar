@@ -9,7 +9,8 @@ jobs:
   refresh:
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v4
+      - uses: actions/checkout@v5
+      - run: python3 -m pip install feedparser==6.0.11
       - run: python3 update.py
       - run: |
           git config user.name "ScholarRadar bot"
