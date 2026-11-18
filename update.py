@@ -2,9 +2,11 @@ import json, datetime, urllib.request, html, re
 from pathlib import Path
 import feedparser
 sources=[
-("https://www.jobs.ac.uk/jobs/academic/rss","See listing"),
-("https://www.jobs.ac.uk/jobs/phd/rss","United Kingdom / see listing"),
-("https://academicpositions.com/rss","See listing"),
+("https://jobs.surrey.ac.uk/RSS/rss.aspx","United Kingdom / see listing"),
+("https://jobs.soton.ac.uk/RSS/rss.aspx","United Kingdom / see listing"),
+("https://jobs.leeds.ac.uk/RSS/rss.aspx","United Kingdom / see listing"),
+("https://jobs.kent.ac.uk/RSS/rss.aspx","United Kingdom / see listing"),
+("https://jobs.uel.ac.uk/RSS/rss.aspx","United Kingdom / see listing"),
 ]
 items={}
 successful=0
@@ -19,7 +21,7 @@ for url,country in sources:
         for e in data.entries:
             title=html.unescape(re.sub(r"<[^>]+>","",e.get("title",""))).strip()
             link=e.get("link","")
-            if link.startswith("https://") and any(w in title.lower() for w in ("phd","ph.d","doctoral","studentship","research assistant","postdoc","scholarship")):
+            if link.startswith("https://") and any(w in title.lower() for w in ("phd","ph.d","doctoral","studentship","research assistant","postdoc","scholarship","research fellow","research associate","researcher")):
                 items[link]={"title":title,"url":link,"country":country,"kind":"Research vacancy"}
         print(f"{url}: {len(data.entries)} entries")
     except Exception as exc:
