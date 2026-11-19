@@ -4,14 +4,28 @@ on:
     paths:
       - '.github/workflows/linkedin-launch.yml'
 permissions:
-  contents: read
+  contents: write
 concurrency: scholar-linkedin-launch
 jobs:
   publish:
     runs-on: ubuntu-latest
-    timeout-minutes: 3
+    timeout-minutes: 10
     steps:
-      - name: Queue introduction after checking website
+      - uses: actions/checkout@v4
+      - name: Render and host PNG poster
+        run: |
+          sudo apt-get update -qq
+          sudo apt-get install -y -qq librsvg2-bin
+          rsvg-convert images/hkpfs-2027.svg -o images/hkpfs-2027.png
+          git config user.name "ScholarRadar automation"
+          git config user.email "41898282+github-actions[bot]@users.noreply.github.com"
+          git add images/hkpfs-2027.png
+          if ! git diff --cached --quiet; then
+            git commit -m "Host LinkedIn-ready fellowship PNG"
+            git push
+          fi
+          echo "POSTER_URL=https://raw.githubusercontent.com/alihassan9808/ScholarRadar/$(git rev-parse HEAD)/images/hkpfs-2027.png" >> "$GITHUB_ENV"
+      - name: Attach poster or queue verified fellowship
         env:
           BUFFER_API_KEY: ${{ secrets.BUFFER_API_KEY }}
         run: |
@@ -32,13 +46,39 @@ jobs:
           orgs=query("query { account { organizations { id } } }")["account"]["organizations"]
           channels=[]
           for org in orgs:
-              channels.extend(c for c in query("query { channels(input: { organizationId: "+json.dumps(org["id"])+" }) { id service } }")["channels"] if str(c["service"]).lower()=="linkedin")
+              channels.extend(dict(c,org=org["id"]) for c in query("query { channels(input: { organizationId: "+json.dumps(org["id"])+" }) { id service } }")["channels"] if str(c["service"]).lower()=="linkedin")
           if len(channels)!=1:
               raise SystemExit("Expected exactly one LinkedIn channel")
           message="🇭🇰 Hong Kong PhD Fellowship 2027/28 — applications open!\n\n🎓 400 fellowships available\n💰 HK$344,400 annual stipend and HK$14,400 annual research travel allowance for three years, per official call.\n🌍 Applicants of all nationalities seeking new full-time PhD admission.\n📅 Initial application deadline: 1 December 2026, noon Hong Kong time.\n\nRead eligibility, application steps and access the official application portal on ScholarRadar:\nhttps://scholarradar-bsv.pages.dev/hkpfs-2027.html\n\n#PhD #Scholarships2027 #HongKong #Research #ScholarRadar"
-          q="mutation { createPost(input: { text: "+json.dumps(message,ensure_ascii=False)+", channelId: "+json.dumps(channels[0]["id"])+", schedulingType: automatic, mode: addToQueue }) { ... on PostActionSuccess { post { id dueAt } } ... on MutationError { message } } }"
-          result=query(q)["createPost"]
-          if not result.get("post"):
-              raise SystemExit("Buffer rejected post")
-          print("Queued:",result["post"])
+          from datetime import datetime, timezone
+          if datetime.now(timezone.utc) >= datetime(2026,12,1,4,tzinfo=timezone.utc):
+              raise SystemExit("Application closed")
+          url=os.environ["POSTER_URL"]
+          with urllib.request.urlopen(url,timeout=25) as res:
+              if res.read(8)!=b"\x89PNG\r\n\x1a\n":
+                  raise SystemExit("Poster not accessible as PNG")
+          c=channels[0]
+          j=lambda x:json.dumps(x,ensure_ascii=False)
+          after=""
+          matches=[]
+          while True:
+              data=query("query { posts(first: 50"+after+", input: { organizationId: "+j(c["org"])+", filter: {channelIds: ["+j(c["id"])+"]} }) { edges { node {id text status assets {source}} } pageInfo {hasNextPage endCursor} } }")["posts"]
+              matches.extend(e["node"] for e in data["edges"] if "hkpfs-2027.html" in e["node"]["text"])
+              if not data["pageInfo"]["hasNextPage"]: break
+              after=", after: "+j(data["pageInfo"]["endCursor"])
+          assets=", assets: [{image: {url: "+j(url)+"}}]"
+          if len(matches)>1: raise SystemExit("Multiple existing posts; manual review needed")
+          if matches:
+              p=matches[0]
+              if p["status"] not in ("buffer","scheduled","draft"):
+                  raise SystemExit("Existing post is not editable; no duplicate created")
+              if p["assets"]:
+                  print("Existing fellowship already has media; no duplicate created")
+                  raise SystemExit(0)
+              q="mutation { editPost(input: {id: "+j(p["id"])+assets+"}) { ... on PostActionSuccess {post {id status assets {source}}} ... on MutationError {message} } }"
+          else:
+              q="mutation { createPost(input: {text: "+j(message)+", channelId: "+j(c["id"])+", schedulingType: automatic, mode: addToQueue"+assets+"}) { ... on PostActionSuccess {post {id status assets {source}}} ... on MutationError {message} } }"
+          result=next(iter(query(q).values()))
+          if not result.get("post"): raise SystemExit("Buffer rejected image post")
+          print("Buffer accepted post:",result["post"])
           PY
