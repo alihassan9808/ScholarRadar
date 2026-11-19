@@ -84,3 +84,5 @@ jobs:
           if not result.get("post"): raise SystemExit("Buffer rejected image post: "+str(result.get("message","unknown")))
           print("Buffer accepted post:",result["post"])
           PY
+
+# Re-run after owner replaced connected LinkedIn profile.
